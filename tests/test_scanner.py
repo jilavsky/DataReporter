@@ -15,12 +15,16 @@ def test_scan_folders_detects_hdf5(tmp_path: Path) -> None:
     assert records[0].filename == "a.h5"
 
 
-def test_index_file_lists_entries(tmp_path: Path) -> None:
+def test_index_file_extracts_metadata(tmp_path: Path) -> None:
     import h5py
     import numpy as np
 
-    path = tmp_path / "data.nxs"
+    path = tmp_path / "sample.nxs"
     with h5py.File(str(path), "w") as h5:
-        h5.create_dataset("/raw/signal", data=np.arange(5))
-    record = _index_file(path)
-    assert any("raw/signal" in e for e in record.entries)
+        h5.create_dataset("/entry/sasdata/Q", data=np.arange(5, dtype=float))
+        h5.create_dataset("/entry/sasdata/I", data=np.arange(5, dtype=float))
+        h5.create_dataset("entry/Metadata/SampleTitle", data=b"test")
+    record = _index_file(path, tmp_path)
+    assert record.metadata.get("SampleTitle") == "test"
+    assert "entry/sasdata/Q" in record.data_arrays
+    assert "entry/sasdata/I" in record.data_arrays

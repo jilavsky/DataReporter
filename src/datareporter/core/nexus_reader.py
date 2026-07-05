@@ -26,3 +26,37 @@ def read_dataset(h5: h5py.File, path: str) -> Any:
         return h5[path][()]
     except Exception as exc:
         return None
+
+
+def read_metadata(h5: h5py.File) -> dict[str, Any]:
+    """Return entry/Metadata as a flat dict of scalar values."""
+    out: dict[str, Any] = {}
+    try:
+        meta = h5.get("entry/Metadata")
+        if meta is None:
+            return out
+        for key in meta:
+            try:
+                val = meta[key][()]
+                if hasattr(val, "item"):
+                    val = val.item()
+                out[key] = val
+            except Exception:
+                out[key] = None
+    except Exception:
+        pass
+    return out
+
+
+def read_sasdata(h5: h5py.File) -> dict[str, Any]:
+    """Return sasdata arrays as a dict."""
+    out: dict[str, Any] = {}
+    for key in ["Q", "I", "Idev", "Qdev"]:
+        p = f"entry/sasdata/{key}"
+        try:
+            ds = h5.get(p)
+            if ds is not None:
+                out[key] = ds[()]
+        except Exception:
+            pass
+    return out

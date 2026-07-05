@@ -5,56 +5,60 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 from datareporter.core.scanner import NexusRecord
+
+
+def _decode(value):
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return str(value)
+    return value
 
 
 def save_images(records: List[NexusRecord], output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     for idx, record in enumerate(records, start=1):
         try:
-            import h5py
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            x = None
+            y = None
+            x_label = "index"
+            y_label = "value"
 
-            with h5py.File(str(record.path), "r") as h5:
-                datasets = _find_datasets(h5)
-                if not datasets:
-                    continue
-                for dpath in datasets[:4]:
-                    try:
-                        data = h5[dpath][()]
-                        if data is None or len(data) == 0:
-                            continue
-                        fig, ax = plt.subplots()
-                        ax.plot(data)
-                        ax.set_title(f"{record.filename}: {dpath}")
-                        fig.tight_layout()
-                        fig.savefig(output_dir / f"{idx}_{Path(dpath).name}.jpg", dpi=150)
-                        plt.close(fig)
-                    except Exception:
-                        continue
+            q = record.data_arrays.get("entry/sasdata/Q")
+            i = record.data_arrays.get("entry/sasdata/I")
+            if q is not None and i is not None:
+                x, y, x_label, y_label = q, i, "Q", "I"
+            else:
+                bq = record.data_arrays.get("entry/Blank_data/Q")
+                bi = record.data_arrays.get("entry/Blank_data/Intensity")
+                if bq is not None and bi is not None:
+                    x, y, x_label, y_label = bq, bi, "Q", "Blank Intensity"
+
+            if x is None or y is None:
+                continue
+
+            fig, ax = plt.subplots()
+            ax.loglog(x, y)
+            title_parts = []
+            if record.sample:
+                title_parts.append(record.sample)
+            if record.technique:
+                title_parts.append(record.technique)
+            if record.metadata.get("SampleTitle"):
+                title_parts.append(_decode(record.metadata["SampleTitle"]))
+            ax.set_title(" / ".join(title_parts) or record.filename)
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            fig.tight_layout()
+            safe_name = record.filename.replace(" ", "_")
+            fig.savefig(output_dir / f"{idx:03d}_{safe_name}.jpg", dpi=150)
+            plt.close(fig)
         except Exception:
             continue
     return output_dir
-
-
-def _find_datasets(h5: "h5py.File", path: str = "/", max_depth: int = 3) -> list[str]:
-    found: list[str] = []
-    if max_depth <= 0:
-        return found
-    try:
-        group = h5[path]
-    except Exception:
-        return found
-    for key in list(group.keys())[:20]:
-        name = f"{path}/{key}"
-        try:
-            item = group[key]
-        except Exception:
-            continue
-        if hasattr(item, "keys"):
-            found.extend(_find_datasets(h5, name, max_depth - 1))
-        elif hasattr(item, "shape") and len(item.shape) >= 1:
-            found.append(name)
-    return found

@@ -26,5 +26,5 @@ def test_index_file_extracts_metadata(tmp_path: Path) -> None:
         h5.create_dataset("entry/Metadata/SampleTitle", data=b"test")
     record = _index_file(path, tmp_path)
     assert record.metadata.get("SampleTitle") == "test"
-    assert "entry/sasdata/Q" in record.data_arrays
-    assert "entry/sasdata/I" in record.data_arrays
+    assert "Q" in record.data_arrays
+    assert "I" in record.data_arrays

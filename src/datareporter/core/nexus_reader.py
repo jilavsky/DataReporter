@@ -49,10 +49,20 @@ def read_metadata(h5: h5py.File) -> dict[str, Any]:
 
 
 def read_sasdata(h5: h5py.File) -> dict[str, Any]:
-    """Return sasdata arrays as a dict."""
+    """Return SAS data arrays from NXcanSAS SASdata groups.
+
+    Uses attribute-based group discovery to locate the correct SASdata
+    group(s) marked with ``@canSAS_class = "SASdata"``, matching the
+    NXcanSAS specification and the extraction logic used by pyirena.
+    """
     out: dict[str, Any] = {}
-    for key in ["Q", "I", "Idev", "Qdev"]:
-        p = f"entry/sasdata/{key}"
+    paths = _find_sasdata_groups(h5)
+    if not paths:
+        return out
+
+    sas = h5[paths[0]]
+    for key in ["Q", "I", "Idev", "Qdev", "dQw", "dQl"]:
+        p = f"{sas.name}/{key}" if sas.name != "/" else key
         try:
             ds = h5.get(p)
             if ds is not None:
@@ -60,3 +70,36 @@ def read_sasdata(h5: h5py.File) -> dict[str, Any]:
         except Exception:
             pass
     return out
+
+
+def _find_sasdata_groups(h5: "h5py.File") -> list[str]:
+    """Find groups with attribute ``canSAS_class = SASdata``."""
+    matches: list[str] = []
+
+    def _check(name: str, obj: Any) -> None:
+        if isinstance(obj, h5py.Group):
+            attr = obj.attrs.get("canSAS_class")
+            if attr is not None:
+                val = attr.decode("utf-8") if isinstance(attr, bytes) else str(attr)
+                if val == "SASdata":
+                    matches.append(name)
+
+    try:
+        h5.visititems(_check)
+    except Exception:
+        pass
+
+    if matches:
+        return matches
+
+    paths: list[str] = []
+
+    def _find(name: str, obj: Any) -> None:
+        if isinstance(obj, h5py.Group) and name.endswith("sasdata"):
+            paths.append(name)
+
+    try:
+        h5.visititems(_find)
+    except Exception:
+        pass
+    return paths

@@ -30,8 +30,8 @@ def save_images(records: List[NexusRecord], output_dir: Path) -> Path:
             x_label = "index"
             y_label = "value"
 
-            q = record.data_arrays.get("entry/sasdata/Q")
-            i = record.data_arrays.get("entry/sasdata/I")
+            q = record.data_arrays.get("Q")
+            i = record.data_arrays.get("I")
             if q is not None and i is not None:
                 x, y, x_label, y_label = q, i, "Q", "I"
             else:

@@ -64,9 +64,10 @@ def _index_file(path: Path, data_root: Path) -> NexusRecord:
     )
     try:
         import h5py
+        from datareporter.core.nexus_reader import read_metadata, read_sasdata
         with h5py.File(str(path), "r") as h5:
             _extract_metadata(h5, record)
-            _extract_data_arrays(h5, record)
+            record.data_arrays = read_sasdata(h5)
     except Exception as exc:
         record.errors.append(str(exc))
     return record
@@ -89,24 +90,3 @@ def _extract_metadata(h5: "h5py.File", record: NexusRecord) -> None:
                 record.metadata[key] = None
     except Exception:
         pass
-
-
-def _extract_data_arrays(h5: "h5py.File", record: NexusRecord) -> None:
-    paths = [
-        "entry/sasdata/Q",
-        "entry/sasdata/I",
-        "entry/sasdata/Idev",
-        "entry/sasdata/Qdev",
-        "entry/Blank_data/Q",
-        "entry/Blank_data/Intensity",
-        "entry/QRS_data/Q",
-        "entry/QRS_data/Intensity",
-        "entry/data/data",
-    ]
-    for p in paths:
-        try:
-            ds = h5.get(p)
-            if ds is not None:
-                record.data_arrays[p] = ds[()]
-        except Exception:
-            pass

@@ -1,0 +1,13 @@
+name: datareporter
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy>=1.24
+  - matplotlib>=3.7
+  - h5py>=3.9
+  - pyqt>=6.5
+  - pip
+  - pip:
+    - -e .

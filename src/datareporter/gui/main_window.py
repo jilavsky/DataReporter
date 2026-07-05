@@ -208,4 +208,14 @@ def _set_checked_recursive(item: QTreeWidgetItem, checked: bool) -> None:
         _set_checked_recursive(item.child(i), checked)
 
 
-from PyQt6.QtCore import Qt  # noqa: E402
+def launch() -> None:
+    import sys
+
+    app = QApplication(sys.argv)
+    win = MainWindow()
+    win.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    launch()

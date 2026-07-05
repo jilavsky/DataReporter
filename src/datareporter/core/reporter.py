@@ -2,35 +2,45 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import List
+from typing import List, Literal, Optional
 
+from datareporter.core.report_orchestrator import ReportSettings, generate_reports as _orchestrate
 from datareporter.core.scanner import NexusRecord
-from datareporter.io.image_writer import save_images
-from datareporter.io.report_writer import (
-    save_csv_report,
-    save_markdown_report,
-    save_pdf_report,
-)
 
 
 def generate_reports(
     records: List[NexusRecord],
     output_dir: str | Path,
     fmt: str = "all",
+    scope: Literal["sample", "user", "month", "file"] = "sample",
 ) -> List[Path]:
-    """Produce JPG images and/or PDF/MD/CSV reports."""
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    produced: List[Path] = []
+    """Produce reports in the requested format(s).
 
-    if fmt in {"pdf", "all"}:
-        produced.append(save_pdf_report(records, out / "report.pdf"))
-    if fmt in {"md", "all"}:
-        produced.append(save_markdown_report(records, out / "report.md"))
-    if fmt in {"csv", "all"}:
-        produced.append(save_csv_report(records, out / "report.csv"))
+    Args:
+        records: Scanned Nexus records.
+        output_dir: Directory for generated reports.
+        fmt: One of ``pdf``, ``obsidian``, ``csv``, or ``all``.
+        scope: Grouping level for multi-file reports.
+    """
+    formats = _parse_formats(fmt)
+    settings: ReportSettings = {
+        "scope": scope,
+        "formats": formats,
+        "pdf_grid": (2, 3),
+        "pdf_metadata_summary": True,
+        "obsidian_attachments": True,
+        "obsidian_md_per_technique": False,
+        "csv_delimiter": ",",
+    }
+    return _orchestrate(records, Path(output_dir), settings)
 
-    save_images(records, out / "images")
-    return produced
+
+def _parse_formats(fmt: str) -> List[str]:
+    if fmt == "all":
+        return ["pdf", "obsidian", "csv"]
+    mapping = {"pdf": "pdf", "md": "obsidian", "csv": "csv", "obsidian": "obsidian"}
+    resolved = mapping.get(fmt)
+    if resolved is None:
+        return ["pdf"]
+    return [resolved]

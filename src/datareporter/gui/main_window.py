@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
             paths = dlg.selectedFiles()
             if paths:
                 self.input_edit.setText(paths[0])
+                print(f"DEBUG: Input folder selected: {paths[0]}")
                 self._scan_input(paths[0])
 
     def _pick_output(self) -> None:
@@ -139,12 +140,26 @@ class MainWindow(QMainWindow):
     def _scan_input(self, folder: str) -> None:
         self.status.showMessage("Scanning...")
         self.generate_btn.setEnabled(False)
-        self._thread = ScannerThread([folder])
-        self._thread.finished.connect(lambda records: self._on_scanned(records))
-        self._thread.start()
+        try:
+            print(f"DEBUG: Scanning {folder}")
+            records = scan_folders([folder])
+            print(f"DEBUG: Found {len(records)} files")
+            if not records:
+                self._on_scanned([])
+                return
+            self._on_scanned(records)
+        except Exception as exc:
+            import traceback
+            print(f"DEBUG ERROR in scan: {exc}")
+            traceback.print_exc()
+            self.status.showMessage(f"Scan error: {exc}")
 
     def _on_scanned(self, records: List[NexusRecord]) -> None:
         self._records = records
+        print(f"DEBUG: Processing {len(records)} records")
+        if not records:
+            self.status.showMessage("No HDF5 files found in selected folder.")
+            return
         self.tree.clear()
         root = QTreeWidgetItem(self.tree, ["(root)", "", "", ""])
         root.setFlags(root.flags() & ~Qt.ItemFlag.ItemIsSelectable)
@@ -191,6 +206,7 @@ class MainWindow(QMainWindow):
         self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
 
     def _generate(self) -> None:
+        print(f"DEBUG: Generating with {len(self._records)} records")
         self.status.showMessage("Generating reports...")
         QApplication.processEvents()
 
@@ -198,8 +214,12 @@ class MainWindow(QMainWindow):
         settings = self.options.settings()
         try:
             produced = generate_reports(self._records, out_dir, settings)
+            print(f"DEBUG: Generated {len(produced)} report(s)")
             self.status.showMessage(f"Generated {len(produced)} report(s) in {out_dir}")
         except Exception as exc:
+            import traceback
+            print(f"DEBUG ERROR: {exc}")
+            traceback.print_exc()
             self.status.showMessage(f"Error: {exc}")
 
 

@@ -138,25 +138,31 @@ class MainWindow(QMainWindow):
                 self._update_generate()
 
     def _scan_input(self, folder: str) -> None:
+        import sys
+        print(f"DEBUG: Scanning {folder}", file=sys.stderr)
+        sys.stdout.flush()
         self.status.showMessage("Scanning...")
         self.generate_btn.setEnabled(False)
         try:
-            print(f"DEBUG: Scanning {folder}")
             records = scan_folders([folder])
-            print(f"DEBUG: Found {len(records)} files")
+            print(f"DEBUG: Found {len(records)} files", file=sys.stderr)
+            sys.stdout.flush()
             if not records:
                 self._on_scanned([])
                 return
             self._on_scanned(records)
         except Exception as exc:
             import traceback
-            print(f"DEBUG ERROR in scan: {exc}")
-            traceback.print_exc()
+            print(f"DEBUG ERROR in scan: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            sys.stdout.flush()
             self.status.showMessage(f"Scan error: {exc}")
 
     def _on_scanned(self, records: List[NexusRecord]) -> None:
+        import sys
+        print(f"DEBUG: Processing {len(records)} records", file=sys.stderr)
+        sys.stdout.flush()
         self._records = records
-        print(f"DEBUG: Processing {len(records)} records")
         if not records:
             self.status.showMessage("No HDF5 files found in selected folder.")
             return
@@ -206,20 +212,35 @@ class MainWindow(QMainWindow):
         self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
 
     def _generate(self) -> None:
-        print(f"DEBUG: Generating with {len(self._records)} records")
+        import sys
+        print(f"DEBUG: Generating with {len(self._records)} records", file=sys.stderr)
+        sys.stdout.flush()
         self.status.showMessage("Generating reports...")
         QApplication.processEvents()
 
         out_dir = Path(self.output_edit.text())
         settings = self.options.settings()
         try:
-            produced = generate_reports(self._records, out_dir, settings)
-            print(f"DEBUG: Generated {len(produced)} report(s)")
+            # Build format string from checked checkboxes in settings
+            fmt_parts = []
+            if "pdf" in settings["formats"]:
+                fmt_parts.append("pdf")
+            if "obsidian" in settings["formats"]:
+                fmt_parts.append("md")
+            if "csv" in settings["formats"]:
+                fmt_parts.append("csv")
+            fmt = "all" if not fmt_parts else ",".join(fmt_parts)
+            print(f"DEBUG: format={fmt}, scope={settings['scope']}", file=sys.stderr)
+            sys.stdout.flush()
+
+            produced = generate_reports(self._records, out_dir, fmt=fmt, scope=settings["scope"])
+            print(f"DEBUG: Generated {len(produced)} report(s)", file=sys.stderr)
+            sys.stdout.flush()
             self.status.showMessage(f"Generated {len(produced)} report(s) in {out_dir}")
         except Exception as exc:
             import traceback
-            print(f"DEBUG ERROR: {exc}")
-            traceback.print_exc()
+            print(f"DEBUG ERROR: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             self.status.showMessage(f"Error: {exc}")
 
 
@@ -231,9 +252,13 @@ def _set_checked_recursive(item: QTreeWidgetItem, checked: bool) -> None:
 
 def launch() -> None:
     import sys
+    print("DEBUG: GUI launching", file=sys.stderr)
+    sys.stdout.flush()
 
     app = QApplication(sys.argv)
     win = MainWindow()
+    print(f"DEBUG: MainWindow created, _records={len(win._records)}", file=sys.stderr)
+    sys.stdout.flush()
     win.show()
     sys.exit(app.exec())
 

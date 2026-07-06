@@ -268,6 +268,8 @@ class MainWindow(QMainWindow):
                 text = item.text(0).lower()
                 item.setCheckState(0, Qt.CheckState.Checked if "blank" in text else Qt.CheckState.Unchecked)
             stack.extend(item.child(i) for i in range(item.childCount()))
+
+    def _checked_records(self) -> List[NexusRecord]:
         checked_paths = set()
         root = self.tree.invisibleRootItem()
         stack = [root]

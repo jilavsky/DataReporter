@@ -60,7 +60,8 @@ def write_pdf(
             ax.axis("off")
             ax.set_title(img_path.stem, fontsize=8, pad=2)
 
-    for idx in range(len(image_files) % images_per_page + 1, images_per_page):
+    last_ax_idx = (len(image_files) - 1) % images_per_page if image_files else -1
+    for idx in range(last_ax_idx + 1, images_per_page):
         if idx < len(axes):
             axes[idx].axis("off")
 

@@ -53,6 +53,23 @@ def _index_file(path: Path, data_root: Path) -> NexusRecord:
     sample = parts[2] if len(parts) > 2 else ""
     technique = parts[3] if len(parts) > 3 else ""
 
+    # If the fixed-depth guess is suspect, fall back to “count from the end”:
+    #   file_dir -> technique
+    #   parent    -> sample
+    #   gp_parent -> user
+    #   gg_parent -> month (if present)
+    if len(parts) >= 2:
+        file_dir = path.parent.relative_to(data_root)
+        dir_parts = file_dir.parts
+        if len(dir_parts) >= 1:
+            technique = dir_parts[-1]
+        if len(dir_parts) >= 2:
+            sample = dir_parts[-2]
+        if len(dir_parts) >= 3:
+            user = dir_parts[-3]
+        if len(dir_parts) >= 4:
+            month = dir_parts[-4]
+
     record = NexusRecord(
         path=path,
         filename=path.name,

@@ -30,7 +30,7 @@ def write_pdf(
     image_files = sorted(tmp_group.glob("*.jpg"))
 
     if not image_files:
-        _generate_images(records, tmp_group)
+        image_files = sorted(_generate_images(records, tmp_group).glob("*.jpg"))
 
     out_path = output_dir / f"{_safe_name(group_name)}.pdf"
     out_path.parent.mkdir(parents=True, exist_ok=True)

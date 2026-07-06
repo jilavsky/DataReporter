@@ -108,6 +108,22 @@ class MainWindow(QMainWindow):
         btns.addWidget(self.check_visible_btn)
         tree_layout.addLayout(btns)
 
+        filter_bar = QHBoxLayout()
+        self.grep_edit = QLineEdit()
+        self.grep_edit.setPlaceholderText("Grep filter...")
+        filter_btn = QPushButton("Filter")
+        filter_btn.clicked.connect(self._apply_filter)
+        self.remove_blanks_btn = QPushButton("Remove Blanks")
+        self.remove_blanks_btn.clicked.connect(self._remove_blanks)
+        self.only_blanks_btn = QPushButton("Only Blanks")
+        self.only_blanks_btn.clicked.connect(self._only_blanks)
+        filter_bar.addWidget(QLabel("Filter:"))
+        filter_bar.addWidget(self.grep_edit)
+        filter_bar.addWidget(filter_btn)
+        filter_bar.addWidget(self.remove_blanks_btn)
+        filter_bar.addWidget(self.only_blanks_btn)
+        tree_layout.addLayout(filter_bar)
+
         splitter.addWidget(tree_container)
 
         options_container = QWidget()
@@ -156,7 +172,7 @@ class MainWindow(QMainWindow):
                 self._update_generate()
 
     def _scan_input(self, folder: str) -> None:
-        self.status.showMessage("Scanning...")
+        self._set_working("Scanning...")
         self.generate_btn.setEnabled(False)
         self._thread = ScannerThread([folder])
         self._thread.finished.connect(lambda records: self._on_scanned(records))
@@ -212,8 +228,55 @@ class MainWindow(QMainWindow):
     def _update_generate(self) -> None:
         self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
 
+    def _set_working(self, text: str) -> None:
+        self.status.showMessage(f"<span style='color:red; font-weight:bold'>{text}</span>")
+
+    def _apply_filter(self) -> None:
+        pattern = self.grep_edit.text().strip().lower()
+        if not pattern:
+            return
+        root = self.tree.invisibleRootItem()
+        stack = [root]
+        while stack:
+            item = stack.pop()
+            if item.childCount() == 0:
+                text = item.text(0).lower()
+                item.setCheckState(0, Qt.CheckState.Checked if pattern in text else Qt.CheckState.Unchecked)
+            stack.extend(item.child(i) for i in range(item.childCount()))
+
+    def _remove_blanks(self) -> None:
+        root = self.tree.invisibleRootItem()
+        stack = [root]
+        while stack:
+            item = stack.pop()
+            if item.childCount() == 0:
+                text = item.text(0).lower()
+                item.setCheckState(0, Qt.CheckState.Unchecked if "blank" in text else item.checkState(0))
+            stack.extend(item.child(i) for i in range(item.childCount()))
+
+    def _only_blanks(self) -> None:
+        root = self.tree.invisibleRootItem()
+        stack = [root]
+        while stack:
+            item = stack.pop()
+            if item.childCount() == 0:
+                text = item.text(0).lower()
+                item.setCheckState(0, Qt.CheckState.Checked if "blank" in text else Qt.CheckState.Unchecked)
+            stack.extend(item.child(i) for i in range(item.childCount()))
+        checked_paths = set()
+        root = self.tree.invisibleRootItem()
+        stack = [root]
+        while stack:
+            item = stack.pop()
+            if item.checkState(0) == Qt.CheckState.Checked:
+                path = item.data(0, Qt.ItemDataRole.UserRole)
+                if path:
+                    checked_paths.add(path)
+            stack.extend(item.child(i) for i in range(item.childCount()))
+        return [r for r in self._records if str(r.path) in checked_paths]
+
     def _generate(self) -> None:
-        self.status.showMessage("Generating reports...")
+        self._set_working("Generating reports...")
         QApplication.processEvents()
 
         out_dir = Path(self.output_edit.text())
@@ -228,7 +291,7 @@ class MainWindow(QMainWindow):
                 fmt_parts.append("csv")
             fmt = "all" if not fmt_parts else ",".join(fmt_parts)
 
-            produced = generate_reports(self._records, out_dir, fmt=fmt, scope=settings["scope"])
+            produced = generate_reports(self._checked_records(), out_dir, fmt=fmt, scope=settings["scope"])
             self.status.showMessage(f"Generated {len(produced)} report(s) in {out_dir}")
         except Exception as exc:
             self.status.showMessage(f"Error: {exc}")

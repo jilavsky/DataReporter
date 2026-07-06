@@ -181,7 +181,7 @@ class MainWindow(QMainWindow):
     def _on_scanned(self, records: List[NexusRecord]) -> None:
         self._records = records
         if not records:
-            self.status.showMessage("No HDF5 files found in selected folder.")
+            self._set_done("No HDF5 files found in selected folder.")
             self._update_generate()
             return
         self.tree.clear()
@@ -211,7 +211,7 @@ class MainWindow(QMainWindow):
 
         self.tree.expandToDepth(1)
         self._update_generate()
-        self.status.showMessage(f"Found {len(records)} HDF5 file(s)")
+        self._set_done(f"Found {len(records)} HDF5 file(s)")
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if column != 0:
@@ -229,7 +229,12 @@ class MainWindow(QMainWindow):
         self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
 
     def _set_working(self, text: str) -> None:
-        self.status.showMessage(f"<span style='color:red; font-weight:bold'>{text}</span>")
+        self.status.showMessage(text)
+        self.status.setStyleSheet("background-color: red; color: white; font-weight: bold;")
+
+    def _set_done(self, text: str) -> None:
+        self.status.showMessage(text)
+        self.status.setStyleSheet("background-color: green; color: white;")
 
     def _apply_filter(self) -> None:
         pattern = self.grep_edit.text().strip().lower()
@@ -292,7 +297,7 @@ class MainWindow(QMainWindow):
             fmt = "all" if not fmt_parts else ",".join(fmt_parts)
 
             produced = generate_reports(self._checked_records(), out_dir, fmt=fmt, scope=settings["scope"])
-            self.status.showMessage(f"Generated {len(produced)} report(s) in {out_dir}")
+            self._set_done(f"Generated {len(produced)} report(s) in {out_dir}")
         except Exception as exc:
             self.status.showMessage(f"Error: {exc}")
 

@@ -23,7 +23,7 @@ class ReportOptions(QWidget):
         scope_group = QGroupBox("Scope")
         scope_layout = QVBoxLayout(scope_group)
         self.scope_combo = QComboBox()
-        self.scope_combo.addItems(["sample", "user", "month", "file"])
+        self.scope_combo.addItems(["sample", "user", "month", "technique", "file"])
         scope_layout.addWidget(self.scope_combo)
         layout.addWidget(scope_group)
 

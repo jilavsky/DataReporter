@@ -34,6 +34,15 @@ def test_group_by_user():
     assert set(groups.keys()) == {"2026_06/userA", "2026_06/userB"}
 
 
+def test_group_by_technique():
+    recs = [
+        _record("a.h5", "2026_06", "userA", "s1", technique="USAXS"),
+        _record("b.h5", "2026_06", "userA", "s1", technique="SAXS"),
+    ]
+    groups = group_records(recs, "technique")
+    assert set(groups.keys()) == {"USAXS", "SAXS"}
+
+
 def test_group_by_file():
     recs = [_record("a.h5", "2026_06", "userA", "s1"), _record("b.h5", "2026_06", "userA", "s1")]
     groups = group_records(recs, "file")

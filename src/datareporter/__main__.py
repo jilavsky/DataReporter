@@ -11,7 +11,7 @@ def main():
     parser.add_argument("folders", nargs="+", help="Folders to scan for Nexus HDF5 files")
     parser.add_argument("--output", "-o", default="reports", help="Output directory for reports")
     parser.add_argument("--format", default="all", help="Report format(s) as comma-separated list: pdf, md/obsidian, csv, or all")
-    parser.add_argument("--scope", choices=["sample", "user", "month", "file"], default="sample", help="Report grouping scope")
+    parser.add_argument("--scope", choices=["sample", "user", "month", "technique", "file"], default="sample", help="Report grouping scope")
     args = parser.parse_args()
 
     records = scan_folders(args.folders)

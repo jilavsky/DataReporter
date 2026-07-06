@@ -35,9 +35,9 @@ def group_records(records: Sequence[NexusRecord], scope: Scope) -> dict[str, Lis
             groups[key].append(r)
             continue
 
-        # Build key from deepest available level upward.
-        # If a higher level is empty, skip it and fall back to the next lower level.
-        if scope == "month":
+        if scope == "technique":
+            key = r.technique or r.sample or r.user or r.month or "unknown"
+        elif scope == "month":
             key = r.month or r.user or r.sample or r.technique or "unknown"
         elif scope == "user":
             if r.user:

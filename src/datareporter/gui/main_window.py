@@ -176,8 +176,8 @@ class MainWindow(QMainWindow):
         for r in records:
             parts = [p for p in [r.month, r.user, r.sample, r.technique] if p]
             parent = root
-            for part in parts[:-1]:
-                key = part
+            for idx, part in enumerate(parts):
+                key = "/".join(parts[:idx+1])
                 if key in nodes:
                     parent = nodes[key]
                 else:
@@ -188,11 +188,10 @@ class MainWindow(QMainWindow):
                     nodes[key] = node
                     parent = node
 
-            if parts:
-                file_node = QTreeWidgetItem(parent, [r.filename, "file", "1", f"{r.size_bytes} B"])
-                file_node.setFlags(file_node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                file_node.setCheckState(0, Qt.CheckState.Checked)
-                file_node.setData(0, Qt.ItemDataRole.UserRole, str(r.path))
+            file_node = QTreeWidgetItem(parent, [r.filename, "file", "1", f"{r.size_bytes} B"])
+            file_node.setFlags(file_node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            file_node.setCheckState(0, Qt.CheckState.Checked)
+            file_node.setData(0, Qt.ItemDataRole.UserRole, str(r.path))
 
         self.tree.expandToDepth(1)
         self._update_generate()

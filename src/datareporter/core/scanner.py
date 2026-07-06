@@ -46,29 +46,18 @@ def scan_folders(folders: List[str | Path]) -> List[NexusRecord]:
 
 
 def _index_file(path: Path, data_root: Path) -> NexusRecord:
-    rel = path.relative_to(data_root)
-    parts = rel.parts
-    month = parts[0] if len(parts) > 0 else ""
-    user = parts[1] if len(parts) > 1 else ""
-    sample = parts[2] if len(parts) > 2 else ""
-    technique = parts[3] if len(parts) > 3 else ""
-
-    # If the fixed-depth guess is suspect, fall back to “count from the end”:
-    #   file_dir -> technique
-    #   parent    -> sample
-    #   gp_parent -> user
-    #   gg_parent -> month (if present)
-    if len(parts) >= 2:
-        file_dir = path.parent.relative_to(data_root)
-        dir_parts = file_dir.parts
-        if len(dir_parts) >= 1:
-            technique = dir_parts[-1]
-        if len(dir_parts) >= 2:
-            sample = dir_parts[-2]
-        if len(dir_parts) >= 3:
-            user = dir_parts[-3]
-        if len(dir_parts) >= 4:
-            month = dir_parts[-4]
+    parents: list[str] = []
+    p = path.parent
+    while p != data_root and p != p.parent:
+        parents.append(p.name)
+        p = p.parent
+    # Do NOT include data_root itself; work only with folders below the selected root.
+    parents.reverse()
+    # Deepest folder below root -> technique, then sample, user, month.
+    technique = parents[-1] if len(parents) > 0 else ""
+    sample = parents[-2] if len(parents) > 1 else ""
+    user = parents[-3] if len(parents) > 2 else ""
+    month = parents[-4] if len(parents) > 3 else ""
 
     record = NexusRecord(
         path=path,

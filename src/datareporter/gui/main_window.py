@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 from datareporter.core.scanner import NexusRecord, scan_folders
 from datareporter.core.reporter import generate_reports
 from datareporter.gui.report_options import ReportOptions
+from datareporter.gui.settings import load_settings, save_settings
 
 
 class ScannerThread(QThread):
@@ -51,6 +52,8 @@ class MainWindow(QMainWindow):
         self._records: List[NexusRecord] = []
         self._thread: Optional[ScannerThread] = None
 
+        previous = load_settings()
+
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
@@ -58,8 +61,10 @@ class MainWindow(QMainWindow):
         top_bar = QHBoxLayout()
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("Input folder")
+        self.input_edit.textChanged.connect(self._update_generate)
         self.output_edit = QLineEdit()
         self.output_edit.setPlaceholderText("Output folder")
+        self.output_edit.textChanged.connect(self._update_generate)
 
         pick_input = QPushButton("Select Input...")
         pick_input.clicked.connect(self._pick_input)
@@ -116,81 +121,78 @@ class MainWindow(QMainWindow):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
 
+        if previous.get("last_input_dir"):
+            self.input_edit.setText(previous["last_input_dir"])
+        if previous.get("last_output_dir"):
+            self.output_edit.setText(previous["last_output_dir"])
+
+        self._last_input_dir = previous.get("last_input_dir", "")
+        self._last_output_dir = previous.get("last_output_dir", "")
+
     def _pick_input(self) -> None:
+        start = self._last_input_dir or str(Path.home())
         dlg = QFileDialog(self)
         dlg.setFileMode(QFileDialog.FileMode.Directory)
         dlg.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        dlg.setDirectory(start)
         if dlg.exec():
             paths = dlg.selectedFiles()
             if paths:
+                self._last_input_dir = paths[0]
                 self.input_edit.setText(paths[0])
-                print(f"DEBUG: Input folder selected: {paths[0]}")
                 self._scan_input(paths[0])
 
     def _pick_output(self) -> None:
+        start = self._last_output_dir or str(Path.home())
         dlg = QFileDialog(self)
         dlg.setFileMode(QFileDialog.FileMode.Directory)
         dlg.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        dlg.setDirectory(start)
         if dlg.exec():
             paths = dlg.selectedFiles()
             if paths:
+                self._last_output_dir = paths[0]
                 self.output_edit.setText(paths[0])
                 self._update_generate()
 
     def _scan_input(self, folder: str) -> None:
-        import sys
-        print(f"DEBUG: Scanning {folder}", file=sys.stderr)
-        sys.stdout.flush()
         self.status.showMessage("Scanning...")
         self.generate_btn.setEnabled(False)
-        try:
-            records = scan_folders([folder])
-            print(f"DEBUG: Found {len(records)} files", file=sys.stderr)
-            sys.stdout.flush()
-            if not records:
-                self._on_scanned([])
-                return
-            self._on_scanned(records)
-        except Exception as exc:
-            import traceback
-            print(f"DEBUG ERROR in scan: {exc}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            sys.stdout.flush()
-            self.status.showMessage(f"Scan error: {exc}")
+        self._thread = ScannerThread([folder])
+        self._thread.finished.connect(lambda records: self._on_scanned(records))
+        self._thread.start()
 
     def _on_scanned(self, records: List[NexusRecord]) -> None:
-        import sys
-        print(f"DEBUG: Processing {len(records)} records", file=sys.stderr)
-        sys.stdout.flush()
         self._records = records
         if not records:
             self.status.showMessage("No HDF5 files found in selected folder.")
+            self._update_generate()
             return
         self.tree.clear()
         root = QTreeWidgetItem(self.tree, ["(root)", "", "", ""])
         root.setFlags(root.flags() & ~Qt.ItemFlag.ItemIsSelectable)
 
-        month_nodes: dict[str, QTreeWidgetItem] = {}
+        nodes: dict[str, QTreeWidgetItem] = {}
         for r in records:
-            parts = [r.month, r.user, r.sample, r.technique]
+            parts = [p for p in [r.month, r.user, r.sample, r.technique] if p]
             parent = root
-            current_path = []
-            for idx, part in enumerate(parts):
-                if not part:
-                    continue
-                current_path.append(part)
-                key = "/".join(current_path)
-                if key in month_nodes:
-                    parent = month_nodes[key]
+            for part in parts[:-1]:
+                key = part
+                if key in nodes:
+                    parent = nodes[key]
                 else:
-                    is_file = (idx == len(parts) - 1)
-                    node_type = "file" if is_file else ("technique" if idx == 3 else "folder")
-                    node = QTreeWidgetItem(parent, [part, node_type, "1", f"{r.size_bytes} B" if is_file else ""])
+                    node = QTreeWidgetItem(parent, [part, "folder", "", ""])
                     node.setFlags(node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                     node.setCheckState(0, Qt.CheckState.Checked)
-                    node.setData(0, Qt.ItemDataRole.UserRole, str(r.path if is_file else ""))
-                    month_nodes[key] = node
+                    node.setData(0, Qt.ItemDataRole.UserRole, "")
+                    nodes[key] = node
                     parent = node
+
+            if parts:
+                file_node = QTreeWidgetItem(parent, [r.filename, "file", "1", f"{r.size_bytes} B"])
+                file_node.setFlags(file_node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                file_node.setCheckState(0, Qt.CheckState.Checked)
+                file_node.setData(0, Qt.ItemDataRole.UserRole, str(r.path))
 
         self.tree.expandToDepth(1)
         self._update_generate()
@@ -212,16 +214,12 @@ class MainWindow(QMainWindow):
         self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
 
     def _generate(self) -> None:
-        import sys
-        print(f"DEBUG: Generating with {len(self._records)} records", file=sys.stderr)
-        sys.stdout.flush()
         self.status.showMessage("Generating reports...")
         QApplication.processEvents()
 
         out_dir = Path(self.output_edit.text())
         settings = self.options.settings()
         try:
-            # Build format string from checked checkboxes in settings
             fmt_parts = []
             if "pdf" in settings["formats"]:
                 fmt_parts.append("pdf")
@@ -230,18 +228,18 @@ class MainWindow(QMainWindow):
             if "csv" in settings["formats"]:
                 fmt_parts.append("csv")
             fmt = "all" if not fmt_parts else ",".join(fmt_parts)
-            print(f"DEBUG: format={fmt}, scope={settings['scope']}", file=sys.stderr)
-            sys.stdout.flush()
 
             produced = generate_reports(self._records, out_dir, fmt=fmt, scope=settings["scope"])
-            print(f"DEBUG: Generated {len(produced)} report(s)", file=sys.stderr)
-            sys.stdout.flush()
             self.status.showMessage(f"Generated {len(produced)} report(s) in {out_dir}")
         except Exception as exc:
-            import traceback
-            print(f"DEBUG ERROR: {exc}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
             self.status.showMessage(f"Error: {exc}")
+
+    def closeEvent(self, event) -> None:
+        save_settings({
+            "last_input_dir": self._last_input_dir,
+            "last_output_dir": self._last_output_dir,
+        })
+        super().closeEvent(event)
 
 
 def _set_checked_recursive(item: QTreeWidgetItem, checked: bool) -> None:
@@ -252,13 +250,9 @@ def _set_checked_recursive(item: QTreeWidgetItem, checked: bool) -> None:
 
 def launch() -> None:
     import sys
-    print("DEBUG: GUI launching", file=sys.stderr)
-    sys.stdout.flush()
 
     app = QApplication(sys.argv)
     win = MainWindow()
-    print(f"DEBUG: MainWindow created, _records={len(win._records)}", file=sys.stderr)
-    sys.stdout.flush()
     win.show()
     sys.exit(app.exec())
 

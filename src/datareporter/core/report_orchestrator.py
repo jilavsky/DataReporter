@@ -30,14 +30,26 @@ class ReportSettings(TypedDict):
 def group_records(records: Sequence[NexusRecord], scope: Scope) -> dict[str, List[NexusRecord]]:
     groups: dict[str, List[NexusRecord]] = defaultdict(list)
     for r in records:
-        if scope == "sample":
-            key = f"{r.month}/{r.user}/{r.sample}"
-        elif scope == "user":
-            key = f"{r.month}/{r.user}"
-        elif scope == "month":
-            key = r.month
-        else:
+        if scope == "file":
             key = r.filename
+            groups[key].append(r)
+            continue
+
+        # Build key from deepest available level upward.
+        # If a higher level is empty, skip it and fall back to the next lower level.
+        if scope == "month":
+            key = r.month or r.user or r.sample or r.technique or "unknown"
+        elif scope == "user":
+            if r.user:
+                key = f"{r.month}/{r.user}" if r.month else r.user
+            else:
+                key = r.sample or r.technique or "unknown"
+        else:
+            if r.sample:
+                key = "/".join([p for p in [r.month, r.user, r.sample] if p])
+            else:
+                key = r.technique or "unknown"
+
         groups[key].append(r)
     return dict(groups)
 

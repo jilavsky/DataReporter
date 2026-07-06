@@ -74,4 +74,7 @@ def write_pdf(
 
 
 def _safe_name(name: str) -> str:
-    return name.replace("/", "_").replace(" ", "_").replace(":", "-").strip("_")
+    name = name.strip("/").strip("_")
+    if not name:
+        return "report"
+    return name.replace("/", "_").replace(" ", "_").replace(":", "-")

@@ -39,8 +39,11 @@ def generate_reports(
 def _parse_formats(fmt: str) -> List[str]:
     if fmt == "all":
         return ["pdf", "obsidian", "csv"]
-    mapping = {"pdf": "pdf", "md": "obsidian", "csv": "csv", "obsidian": "obsidian"}
-    resolved = mapping.get(fmt)
-    if resolved is None:
-        return ["pdf"]
-    return [resolved]
+    parts = [p.strip() for p in fmt.split(",")]
+    mapping = {"pdf": "pdf", "md": "obsidian", "csv": "csv", "obsidian": "obsidian", "markdown": "obsidian"}
+    resolved = []
+    for p in parts:
+        val = mapping.get(p)
+        if val is not None and val not in resolved:
+            resolved.append(val)
+    return resolved or ["pdf"]

@@ -61,10 +61,8 @@ class MainWindow(QMainWindow):
         top_bar = QHBoxLayout()
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("Input folder")
-        self.input_edit.textChanged.connect(self._update_generate)
         self.output_edit = QLineEdit()
         self.output_edit.setPlaceholderText("Output folder")
-        self.output_edit.textChanged.connect(self._update_generate)
 
         pick_input = QPushButton("Select Input...")
         pick_input.clicked.connect(self._pick_input)
@@ -135,6 +133,8 @@ class MainWindow(QMainWindow):
         splitter.setSizes([700, 400])
 
         self.status = QStatusBar()
+        self._status_label = QLabel("Ready")
+        self.status.addPermanentWidget(self._status_label)
         self.setStatusBar(self.status)
 
         if previous.get("last_input_dir"):
@@ -229,12 +229,14 @@ class MainWindow(QMainWindow):
         self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
 
     def _set_working(self, text: str) -> None:
-        self.status.showMessage(text)
-        self.status.setStyleSheet("background-color: red; color: white; font-weight: bold;")
+        self._status_label.setText(text)
+        self._status_label.setStyleSheet("background-color: red; color: white; font-weight: bold; padding: 3px;")
+        self.status.repaint()
 
     def _set_done(self, text: str) -> None:
-        self.status.showMessage(text)
-        self.status.setStyleSheet("background-color: green; color: white;")
+        self._status_label.setText(text)
+        self._status_label.setStyleSheet("background-color: green; color: white; padding: 3px;")
+        self.status.repaint()
 
     def _apply_filter(self) -> None:
         pattern = self.grep_edit.text().strip().lower()

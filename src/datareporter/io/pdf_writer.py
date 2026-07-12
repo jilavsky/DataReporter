@@ -106,36 +106,130 @@ def write_pdf(
 
     else:
         # Multi-dataset mode: combine N datasets per graph with colored curves and legends.
-        num_pages = max(1, (len(image_files) + datasets_per_graph - 1) // datasets_per_graph)
+        # Only combine records of the same technique (e.g., USAXS, SAXS, WAXS).
+        _technique_groups = _group_by_technique(records)
 
         with PdfPages(str(out_path)) as pdf:
-            for page_idx in range(num_pages):
-                start = page_idx * datasets_per_graph
-                end = min(start + datasets_per_graph, len(image_files))
-                page_images = image_files[start:end]
+            for tech_name, tech_records in _technique_groups.items():
+                # Resolve cached images for this technique group
+                if image_cache_dir and image_mapping:
+                    tech_image_files = _get_cached_images(tech_records, image_mapping)
+                elif tmp_images:
+                    tmp_group = tmp_images / _safe_name(group_name)
+                    tmp_group.mkdir(parents=True, exist_ok=True)
+                    tech_image_files = sorted(tmp_group.glob("*.jpg"))
+                    if not tech_image_files:
+                        tech_image_files = sorted(_generate_images(tech_records, tmp_group).glob("*.jpg"))
+                else:
+                    tmp_dir = output_dir / ".tmp_images" / _safe_name(group_name)
+                    tmp_dir.mkdir(parents=True, exist_ok=True)
+                    tech_image_files = sorted(_generate_images(tech_records, tmp_dir).glob("*.jpg"))
 
-                fig, ax = plt.subplots(figsize=(11.7, 8.3))
-                fig.text(0.01, 0.99, group_name, va="top", fontsize=14, weight="bold")
+                if not tech_records:
+                    continue
 
-                for i, img_path in enumerate(page_images):
-                    color = _DARK_COLORS[i % len(_DARK_COLORS)]
-                    ax.imshow(plt.imread(str(img_path)))
-                    ax.set_title(img_path.stem, fontsize=10, pad=5)
+                num_pages = max(1, (len(tech_image_files) + datasets_per_graph - 1) // datasets_per_graph)
 
-                # Add legend when multiple datasets are combined on one page
-                if len(page_images) > 1:
-                    labels = [img.stem for img in page_images]
-                    handles = [plt.Line2D([0], [0], color=_DARK_COLORS[i % len(_DARK_COLORS)], linewidth=2)
-                               for i in range(len(page_images))]
-                    ax.legend(handles, labels, loc="upper right", fontsize=8)
+                for page_idx in range(num_pages):
+                    start = page_idx * datasets_per_graph
+                    end = min(start + datasets_per_graph, len(tech_image_files))
+                    page_images = tech_image_files[start:end]
+                    page_records = tech_records[start:end] if len(tech_records) >= end else tech_records[start:]
 
-                ax.axis("off")
-                plt.tight_layout()
-                pdf.savefig(fig, dpi=150)
-                plt.close(fig)
+                    fig, ax = plt.subplots(figsize=(11.7, 8.3))
+                    title = f"{group_name} — {tech_name}" if tech_name != group_name else group_name
+                    fig.text(0.01, 0.99, title, va="top", fontsize=14, weight="bold")
+
+                    curves_plotted = 0
+                    for i, (img_path, record) in enumerate(zip(page_images, page_records)):
+                        try:
+                            color = _DARK_COLORS[i % len(_DARK_COLORS)]
+
+                            # Try to plot actual SAS data curves instead of just displaying images
+                            q_data = record.data_arrays.get("Q")
+                            i_data = record.data_arrays.get("I")
+
+                            if q_data is not None and i_data is not None:
+                                # Plot Q vs I as a line curve
+                                ax.loglog(q_data, i_data, color=color, linewidth=1.5,
+                                         label=_get_clean_filename(record.filename))
+                                curves_plotted += 1
+                            else:
+                                # Fallback to image if no data arrays available
+                                ax.imshow(plt.imread(str(img_path)))
+                        except Exception as e:
+                            print(f"Warning: Failed to plot record {record.filename}: {e}")
+
+                    # Add legend when multiple datasets are combined on one page
+                    if len(page_images) > 1 and curves_plotted > 0:
+                        handles, labels = ax.get_legend_handles_labels()
+                        ax.legend(handles, labels, loc="upper right", fontsize=8)
+                    elif len(page_images) > 1:
+                        # Fallback legend with cleaned filenames
+                        labels = [_get_clean_filename(r.filename) for r in page_records]
+                        handles = [plt.Line2D([0], [0], color=_DARK_COLORS[i % len(_DARK_COLORS)], linewidth=2)
+                                   for i in range(len(page_images))]
+                        ax.legend(handles, labels, loc="upper right", fontsize=8)
+
+                    if curves_plotted > 0:
+                        ax.set_xlabel("Q (Å⁻¹)")
+                        ax.set_ylabel("Intensity (cm⁻¹)")
+
+                    plt.tight_layout()
+                    pdf.savefig(fig, dpi=150)
+                    plt.close(fig)
 
     written.append(out_path)
     return written
+
+
+def _get_clean_filename(filename: str) -> str:
+    """Extract a clean filename without extension for use in legends.
+    
+    Removes common prefixes like Databroker UUIDs and dates to make labels more readable.
+    Examples:
+        "2026_07_12_Servis_AM1_saxs_0001.hdf" -> "AM1_saxs"
+        "EPON826_1_0050.hdf" -> "EPON826_1"
+    """
+    # Remove file extension
+    name = Path(filename).stem
+    
+    parts = name.split("_")
+    
+    # If filename has many parts, clean up leading date/UUID patterns
+    if len(parts) > 3:
+        cleaned_parts = []
+        skip_until_meaningful = True
+        
+        for part in parts:
+            # Skip pure numeric parts at the beginning (date components, IDs)
+            if skip_until_meaningful and part.isdigit():
+                continue
+            
+            # Once we hit a non-numeric part, stop skipping
+            if skip_until_meaningful:
+                skip_until_meaningful = False
+            
+            cleaned_parts.append(part)
+        
+        if cleaned_parts:
+            name = "_".join(cleaned_parts)
+    
+    return name
+
+
+def _group_by_technique(records):
+    """Group records by their technique field (e.g., usaxs, saxs, waxs).
+
+    Returns an OrderedDict-like dict preserving insertion order of first
+    occurrence per technique.  Records without a technique are grouped under
+    the empty string key "".
+    """
+    groups = {}
+    for r in records:
+        tech = (r.technique or "").lower() if hasattr(r, "technique") else ""
+        groups.setdefault(tech, []).append(r)
+    return groups
 
 
 def _get_cached_images(

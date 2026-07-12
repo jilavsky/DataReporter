@@ -20,6 +20,11 @@ _DEFAULTS = {
     "obsidian_attachments": True,
     "obsidian_md_per_technique": False,
     "csv_delimiter": ",",
+    # Output behavior
+    "mirror": False,
+    "add_to_source": False,
+    # Multi-dataset graph setting
+    "datasets_per_graph": 1,
 }
 
 

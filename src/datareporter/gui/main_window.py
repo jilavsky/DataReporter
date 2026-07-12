@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from datareporter.core.scanner import NexusRecord, scan_folders, list_directory
+from datareporter.core.scanner import NexusRecord, scan_folders_fast, list_directory
 from datareporter.core.reporter import generate_reports
 from datareporter.gui.report_options import ReportOptions
 from datareporter.gui.settings import load_settings, save_settings
@@ -38,7 +38,7 @@ class ScannerThread(QThread):
         self.folder = folder
 
     def run(self) -> None:
-        records = scan_folders([self.folder])
+        records = scan_folders_fast([self.folder])
         self.finished.emit(records)
 
 
@@ -161,6 +161,39 @@ class MainWindow(QMainWindow):
         if previous.get("last_output_dir"):
             self.output_edit.setText(previous["last_output_dir"])
 
+        # Restore persisted report options
+        self.options.scope_combo.setCurrentText(previous.get("scope", "sample"))
+        self.options.mirror_check.setChecked(previous.get("mirror", False))
+        self.options.add_to_source_check.setChecked(previous.get("add_to_source", False))
+        self.options.datasets_spin.setValue(previous.get("datasets_per_graph", 1))
+
+        # Restore format checkboxes
+        saved_formats = previous.get("formats", ["pdf", "obsidian", "csv"])
+        self.options.pdf_check.setChecked("pdf" in saved_formats)
+        self.options.md_check.setChecked("obsidian" in saved_formats)
+        self.options.csv_check.setChecked("csv" in saved_formats)
+
+        # Restore PDF grid settings
+        pdf_grid = previous.get("pdf_grid")
+        if isinstance(pdf_grid, tuple):
+            rows, cols = pdf_grid
+        elif isinstance(pdf_grid, str) and "x" in pdf_grid:
+            try:
+                r_str, c_str = pdf_grid.split("x", 1)
+                rows, cols = int(r_str), int(c_str)
+            except ValueError:
+                rows, cols = 2, 3
+        else:
+            rows, cols = 2, 3
+        self.options.grid_rows_spin.setValue(rows)
+        self.options.grid_cols_spin.setValue(cols)
+
+        # Restore remaining checkboxes
+        self.options.pdf_meta_check.setChecked(previous.get("pdf_metadata_summary", True))
+        self.options.md_attach_check.setChecked(previous.get("obsidian_attachments", True))
+        csv_delim = previous.get("csv_delimiter", ",")
+        self.options.csv_delim_combo.setCurrentText("\t" if csv_delim == "\t" else ",")
+
         self._last_input_dir = previous.get("last_input_dir", "")
         self._last_output_dir = previous.get("last_output_dir", "")
 
@@ -229,13 +262,79 @@ class MainWindow(QMainWindow):
         self._scan_thread.start()
 
     def _on_scan_finished(self, records: List[NexusRecord]) -> None:
-        """Background scan completed — store records for later use when expanding."""
+        """Background scan completed — store records and build the full expandable tree."""
         self._records = records
         if not records:
             self._set_done("No HDF5 files found.")
             return
+        # Replace placeholder root children with a fully-built folder hierarchy from scanned records.
+        self._build_tree_from_records()
+        self._expanded_nodes.clear()
         self._pending_records = list(records)
-        self._set_done(f"Found {len(records)} HDF5 file(s) in background")
+        self._update_generate()
+        self._set_done(f"Found {len(records)} HDF5 file(s)")
+
+    def _build_tree_from_records(self) -> None:
+        """Build the complete folder hierarchy from scanned records.
+
+        Walks each record's relative path and creates intermediate folder nodes so that
+        every level of the data tree is visible and expandable immediately after scanning.
+        Folders can contain both subfolders and files as children.
+        """
+        if not self._data_root or not self._records:
+            return
+        root = self.tree.invisibleRootItem()
+        while root.childCount() > 0:
+            root.takeChild(0)
+
+        # Build a nested dict tree where each node stores:
+        # {"path": Path, "children": {name: node}, "files": [NexusRecord]}
+        tree_root: dict = {}
+        for r in self._records:
+            rel = r.path.relative_to(self._data_root)
+            parts = list(rel.parts)
+
+            # Create folder nodes for all path components except the last (the file).
+            node = tree_root
+            for i in range(len(parts) - 1):
+                part = parts[i]
+                if part not in node:
+                    node[part] = {"path": self._data_root.joinpath(*parts[:i + 1]), "children": {}, "files": []}
+                node = node[part]["children"]
+
+            # The last path component is the file — attach it to its parent folder.
+            file_name = parts[-1]
+            if file_name not in node:
+                node[file_name] = {"path": r.path, "children": {}, "files": [r]}
+            else:
+                node[file_name]["files"].append(r)
+
+        # Recursively build QTreeWidgetItems from the nested dict.
+        self._build_nodes_recursive(root, tree_root)
+
+    def _build_nodes_recursive(self, parent: QTreeWidgetItem, tree_node: dict) -> None:
+        """Recursively create QTreeWidgetItem children from a nested folder-tree dict."""
+        for name in sorted(tree_node.keys()):
+            info = tree_node[name]
+            if info["files"]:
+                # File node — show the first record's details (all records at this path are identical).
+                r = info["files"][0]
+                child = QTreeWidgetItem(parent, [r.filename, "file", "1", self._format_size(r.size_bytes)])
+            else:
+                # Folder node — aggregate counts and sizes from all descendant files.
+                folder_records = []
+                self._collect_files(info, folder_records)
+                total_size = sum(r.size_bytes for r in folder_records)
+                child = QTreeWidgetItem(parent, [name, "folder", str(len(folder_records)), self._format_size(total_size)])
+            child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            child.setCheckState(0, Qt.CheckState.Checked)
+            child.setData(0, Qt.ItemDataRole.UserRole, str(info["path"]))
+
+    def _collect_files(self, node: dict, out: list) -> None:
+        """Recursively collect all files from a subtree."""
+        for name, info in node.items():
+            out.extend(info["files"])
+            self._collect_files(info["children"], out)
 
     def _format_size(self, size_bytes: int) -> str:
         """Format bytes into human-readable size."""
@@ -414,9 +513,11 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Error: {exc}")
 
     def closeEvent(self, event) -> None:
+        opts = self.options.settings()
         save_settings({
             "last_input_dir": self._last_input_dir,
             "last_output_dir": self._last_output_dir,
+            **opts,
         })
         super().closeEvent(event)
 

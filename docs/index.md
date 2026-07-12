@@ -1,26 +1,5 @@
-# DataReporter Documentation
+# DataReporter documentation
 
-## Overview
-
-DataReporter scans directories for Nexus HDF5 files, extracts metadata, generates plots (JPG) and produces reports in PDF, Markdown, or CSV.
-
-## Installation
-
-```bash
-pip install datareporter
-```
-
-## Usage
-
-```bash
-python -m datareporter /path/to/data
-```
-
-## Development
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-```
+* [README](../README.md) — installation, GUI walkthrough, CLI and scripting examples.
+* [architecture.md](architecture.md) — module map, design decisions, and how to extend
+  (new metadata, plot styles, output formats).

@@ -1,3 +1,3 @@
-"""DataReporter - Nexus HDF5 data inspection and reporting toolkit."""
+"""DataReporter — summaries of USAXS/SAXS/WAXS reduced-data trees."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

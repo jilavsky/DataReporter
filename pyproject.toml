@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datareporter"
-version = "0.1.0"
-description = "Nexus HDF5 data inspection and reporting toolkit"
+version = "0.2.0"
+description = "PDF / Obsidian-Markdown / ASCII summaries of USAXS/SAXS/WAXS reduced-data trees"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
@@ -34,8 +34,6 @@ dependencies = [
 
 
 [project.optional-dependencies]
-pdf = ["reportlab>=4.0"]
-md = ["markdown>=3.5"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -46,7 +44,7 @@ dev = [
 
 
 [project.scripts]
-datareporter = "datareporter.__main__:main"
+datareporter = "datareporter.cli:main"
 
 
 [project.gui-scripts]

@@ -79,6 +79,46 @@ def _index_file(path: Path, data_root: Path) -> NexusRecord:
     return record
 
 
+def list_directory(path: Path) -> List[dict]:
+    """Fast shallow listing of a directory.
+
+    Returns a list of dicts with keys: name, type ('folder'|'file'), size_bytes.
+    Only immediate children are returned; no HDF5 metadata is read and no recursion.
+    For folders, only the direct child files' sizes are counted (not recursive).
+    """
+    results: List[dict] = []
+    if not path.is_dir():
+        return results
+    for entry in sorted(path.iterdir()):
+        try:
+            stat = entry.stat()
+        except OSError:
+            continue
+        if entry.is_file() and entry.suffix.lower() in _HDF_EXTENSIONS:
+            results.append({"name": entry.name, "type": "file", "size_bytes": stat.st_size})
+        elif entry.is_dir():
+            # Only count direct HDF5 children (no recursion) — fast!
+            total_size = 0
+            file_count = 0
+            try:
+                for sub in entry.iterdir():
+                    if sub.is_file() and sub.suffix.lower() in _HDF_EXTENSIONS:
+                        file_count += 1
+                        try:
+                            total_size += sub.stat().st_size
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+            results.append({
+                "name": entry.name,
+                "type": "folder",
+                "size_bytes": total_size,
+                "_file_count": file_count,
+            })
+    return results
+
+
 def _extract_metadata(h5: "h5py.File", record: NexusRecord) -> None:
     try:
         meta = h5.get("entry/Metadata")

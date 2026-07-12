@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -25,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from datareporter.core.scanner import NexusRecord, scan_folders
+from datareporter.core.scanner import NexusRecord, scan_folders, list_directory
 from datareporter.core.reporter import generate_reports
 from datareporter.gui.report_options import ReportOptions
 from datareporter.gui.settings import load_settings, save_settings
@@ -34,13 +33,26 @@ from datareporter.gui.settings import load_settings, save_settings
 class ScannerThread(QThread):
     finished = pyqtSignal(list)
 
-    def __init__(self, folders: list[str]) -> None:
+    def __init__(self, folder: str) -> None:
         super().__init__()
-        self.folders = folders
+        self.folder = folder
 
     def run(self) -> None:
-        records = scan_folders(self.folders)
+        records = scan_folders([self.folder])
         self.finished.emit(records)
+
+
+class DirectoryListerThread(QThread):
+    """Fast background directory listing — no HDF5 reads."""
+    finished = pyqtSignal(list)
+
+    def __init__(self, path: str) -> None:
+        super().__init__()
+        self.path = path
+
+    def run(self) -> None:
+        entries = list_directory(Path(self.path))
+        self.finished.emit(entries)
 
 
 class MainWindow(QMainWindow):
@@ -50,7 +62,14 @@ class MainWindow(QMainWindow):
         self.resize(1100, 700)
 
         self._records: List[NexusRecord] = []
-        self._thread: Optional[ScannerThread] = None
+        # Active background threads
+        self._scan_thread: Optional[ScannerThread] = None
+        # Track which nodes have been fully expanded (children loaded)
+        self._expanded_nodes: set[int] = set()
+        # The root data directory for lazy listing
+        self._data_root: Optional[Path] = None
+        # Pending scan records waiting to be attached when a folder is expanded
+        self._pending_records: List[NexusRecord] = []
 
         previous = load_settings()
 
@@ -66,8 +85,8 @@ class MainWindow(QMainWindow):
 
         pick_input = QPushButton("Select Input...")
         pick_input.clicked.connect(self._pick_input)
-        pick_output = QPushButton("Select Output...")
-        pick_output.clicked.connect(self._pick_output)
+        self.pick_output_btn = QPushButton("Select Output...")
+        self.pick_output_btn.clicked.connect(self._pick_output)
         self.generate_btn = QPushButton("Generate Reports")
         self.generate_btn.setEnabled(False)
         self.generate_btn.clicked.connect(self._generate)
@@ -77,7 +96,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(pick_input)
         top_bar.addWidget(QLabel("Output:"))
         top_bar.addWidget(self.output_edit)
-        top_bar.addWidget(pick_output)
+        top_bar.addWidget(self.pick_output_btn)
         top_bar.addWidget(self.generate_btn)
         main_layout.addLayout(top_bar)
 
@@ -145,6 +164,9 @@ class MainWindow(QMainWindow):
         self._last_input_dir = previous.get("last_input_dir", "")
         self._last_output_dir = previous.get("last_output_dir", "")
 
+        # Wire add_to_source checkbox to disable output path controls
+        self.options.add_to_source_check.toggled.connect(self._on_add_to_source_toggled)
+
     def _pick_input(self) -> None:
         start = self._last_input_dir or str(Path.home())
         dlg = QFileDialog(self)
@@ -156,7 +178,7 @@ class MainWindow(QMainWindow):
             if paths:
                 self._last_input_dir = paths[0]
                 self.input_edit.setText(paths[0])
-                self._scan_input(paths[0])
+                self._load_top_level(paths[0])
 
     def _pick_output(self) -> None:
         start = self._last_output_dir or str(Path.home())
@@ -171,47 +193,119 @@ class MainWindow(QMainWindow):
                 self.output_edit.setText(paths[0])
                 self._update_generate()
 
-    def _scan_input(self, folder: str) -> None:
-        self._set_working("Scanning...")
-        self.generate_btn.setEnabled(False)
-        self._thread = ScannerThread([folder])
-        self._thread.finished.connect(lambda records: self._on_scanned(records))
-        self._thread.start()
+    def _load_top_level(self, folder: str) -> None:
+        """Show top-level folders immediately via fast directory listing.
 
-    def _on_scanned(self, records: List[NexusRecord]) -> None:
-        self._records = records
-        if not records:
-            self._set_done("No HDF5 files found in selected folder.")
-            self._update_generate()
-            return
+        Then scan in the background so records are available when folders are expanded.
+        """
+        self._set_working("Loading...")
+        self.generate_btn.setEnabled(False)
         self.tree.clear()
+        self._expanded_nodes.clear()
+        self._pending_records = []
+
         root = QTreeWidgetItem(self.tree, ["(root)", "", "", ""])
         root.setFlags(root.flags() & ~Qt.ItemFlag.ItemIsSelectable)
 
-        nodes: dict[str, QTreeWidgetItem] = {}
-        for r in records:
-            parts = [p for p in [r.month, r.user, r.sample, r.technique] if p]
-            parent = root
-            for idx, part in enumerate(parts):
-                key = "/".join(parts[:idx+1])
-                if key in nodes:
-                    parent = nodes[key]
-                else:
-                    node = QTreeWidgetItem(parent, [part, "folder", "", ""])
-                    node.setFlags(node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    node.setCheckState(0, Qt.CheckState.Checked)
-                    node.setData(0, Qt.ItemDataRole.UserRole, "")
-                    nodes[key] = node
-                    parent = node
+        # Fast synchronous directory listing — no HDF5 reads, no recursion into subfolders
+        entries = list_directory(Path(folder))
+        self._data_root = Path(folder)
 
-            file_node = QTreeWidgetItem(parent, [r.filename, "file", "1", f"{r.size_bytes} B"])
-            file_node.setFlags(file_node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            file_node.setCheckState(0, Qt.CheckState.Checked)
-            file_node.setData(0, Qt.ItemDataRole.UserRole, str(r.path))
+        for entry in entries:
+            node = QTreeWidgetItem(root, [entry["name"], "folder", "", f"{entry['size_bytes']} B"])
+            node.setFlags(node.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            node.setCheckState(0, Qt.CheckState.Checked)
+            node.setData(0, Qt.ItemDataRole.UserRole, str(Path(folder) / entry["name"]))
 
-        self.tree.expandToDepth(1)
+        # Connect expand handler for lazy loading of subdirectories
+        self.tree.itemExpanded.connect(self._on_item_expanded)
+
         self._update_generate()
-        self._set_done(f"Found {len(records)} HDF5 file(s)")
+        self._set_done(f"Top-level loaded — scanning in background...")
+
+        # Start background scan to collect full records (HDF5 metadata reads)
+        self._scan_thread = ScannerThread(folder)
+        self._scan_thread.finished.connect(self._on_scan_finished)
+        self._scan_thread.start()
+
+    def _on_scan_finished(self, records: List[NexusRecord]) -> None:
+        """Background scan completed — store records for later use when expanding."""
+        self._records = records
+        if not records:
+            self._set_done("No HDF5 files found.")
+            return
+        self._pending_records = list(records)
+        self._set_done(f"Found {len(records)} HDF5 file(s) in background")
+
+    def _format_size(self, size_bytes: int) -> str:
+        """Format bytes into human-readable size."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
+    def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
+        """When a folder is expanded, load its children lazily."""
+        node_id = id(item)
+        if node_id in self._expanded_nodes:
+            return  # Already loaded
+
+        path_str = item.data(0, Qt.ItemDataRole.UserRole)
+        if not path_str or not self._data_root:
+            return
+
+        path = Path(path_str)
+
+        # If we have pending records from the background scan, try to use them first
+        if self._pending_records:
+            folder_records = [r for r in self._pending_records if str(r.path).startswith(str(path))]
+            if folder_records:
+                self._build_children_from_records(item, path, folder_records)
+                self._expanded_nodes.add(node_id)
+                # Remove records we just used so they don't leak to sibling folders
+                self._pending_records = [r for r in self._pending_records if not str(r.path).startswith(str(path))]
+                return
+
+        # Fall back to fast directory listing (no HDF5 reads)
+        entries = list_directory(path)
+        self._expanded_nodes.add(node_id)
+        self._build_children_from_entries(item, path, entries)
+
+    def _build_children_from_records(self, parent: QTreeWidgetItem, path: Path, records: List[NexusRecord]) -> None:
+        """Build child nodes from pre-scanned NexusRecords (has full metadata)."""
+        while parent.childCount() > 0:
+            parent.takeChild(0)
+
+        # Group by next level folder name
+        sub_groups: dict[str, list[NexusRecord]] = {}
+        for r in records:
+            rel = r.path.relative_to(path)
+            parts = [p for p in rel.parts if p]
+            key = parts[0] if len(parts) > 1 else r.technique or r.sample or r.user or "files"
+            sub_groups.setdefault(key, []).append(r)
+
+        for folder_name, sub_records in sorted(sub_groups.items()):
+            total_size = sum(r.size_bytes for r in sub_records)
+            child = QTreeWidgetItem(parent, [folder_name, "folder", str(len(sub_records)), self._format_size(total_size)])
+            child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            child.setCheckState(0, Qt.CheckState.Checked)
+            child.setData(0, Qt.ItemDataRole.UserRole, str(path / folder_name))
+
+    def _build_children_from_entries(self, parent: QTreeWidgetItem, path: Path, entries: list[dict]) -> None:
+        """Build child nodes from fast directory listing (no HDF5 metadata)."""
+        while parent.childCount() > 0:
+            parent.takeChild(0)
+
+        for entry in entries:
+            if entry["type"] == "folder":
+                file_count = entry.get("_file_count", "")
+                child = QTreeWidgetItem(parent, [entry["name"], "folder", str(file_count) if file_count else "", f"{entry['size_bytes']} B"])
+            else:
+                child = QTreeWidgetItem(parent, [entry["name"], "file", "1", f"{entry['size_bytes']} B"])
+            child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            child.setCheckState(0, Qt.CheckState.Checked)
+            child.setData(0, Qt.ItemDataRole.UserRole, str(path / entry["name"]))
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if column != 0:
@@ -226,7 +320,17 @@ class MainWindow(QMainWindow):
         _set_checked_recursive(root, True)
 
     def _update_generate(self) -> None:
-        self.generate_btn.setEnabled(bool(self.input_edit.text()) and bool(self.output_edit.text()))
+        has_input = bool(self.input_edit.text())
+        # When add_to_source is checked, output path is not needed
+        if self.options.add_to_source_check.isChecked():
+            self.generate_btn.setEnabled(has_input)
+        else:
+            self.generate_btn.setEnabled(has_input and bool(self.output_edit.text()))
+
+    def _on_add_to_source_toggled(self, checked: bool) -> None:
+        """Disable output path controls when add_to_source is active."""
+        self.output_edit.setEnabled(not checked)
+        self.pick_output_btn.setEnabled(not checked)
 
     def _set_working(self, text: str) -> None:
         self._status_label.setText(text)
@@ -288,20 +392,24 @@ class MainWindow(QMainWindow):
         self._set_working("Generating reports...")
         QApplication.processEvents()
 
-        out_dir = Path(self.output_edit.text())
+        out_dir = Path(self.output_edit.text()) if not self.options.add_to_source_check.isChecked() else None
         settings = self.options.settings()
+        input_root = Path(self.input_edit.text()) if self.input_edit.text() else None
         try:
-            fmt_parts = []
-            if "pdf" in settings["formats"]:
-                fmt_parts.append("pdf")
-            if "obsidian" in settings["formats"]:
-                fmt_parts.append("md")
-            if "csv" in settings["formats"]:
-                fmt_parts.append("csv")
-            fmt = "all" if not fmt_parts else ",".join(fmt_parts)
-
-            produced = generate_reports(self._checked_records(), out_dir, fmt=fmt, scope=settings["scope"])
-            self._set_done(f"Generated {len(produced)} report(s) in {out_dir}")
+            # Pass the full settings dict so all options (mirror, add_to_source,
+            # datasets_per_graph, grid, etc.) flow through to the orchestrator.
+            produced = generate_reports(
+                self._checked_records(),
+                out_dir or Path("."),  # placeholder when add_to_source is active
+                fmt="all",  # formats are already in settings["formats"]
+                scope=settings["scope"],
+                settings=settings,
+                input_root=input_root,
+            )
+            if self.options.add_to_source_check.isChecked():
+                self._set_done(f"Generated {len(produced)} report(s) into input location")
+            else:
+                self._set_done(f"Generated {len(produced)} report(s) in {out_dir}")
         except Exception as exc:
             self.status.showMessage(f"Error: {exc}")
 

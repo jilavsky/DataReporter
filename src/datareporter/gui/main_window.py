@@ -209,6 +209,10 @@ class MainWindow(QMainWindow):
         self.status.showMessage(f"Scanning {folder} …")
         self.generate_btn.setEnabled(False)
         self.tree.clear()
+        # Join any previous scan before dropping its reference (see
+        # _finish_generation for why an un-waited QThread aborts the process).
+        if self._scan_thread is not None:
+            self._scan_thread.wait()
         self._scan_thread = ScanThread(folder)
         self._scan_thread.done.connect(self._scan_done)
         self._scan_thread.failed.connect(
@@ -216,6 +220,9 @@ class MainWindow(QMainWindow):
         self._scan_thread.start()
 
     def _scan_done(self, datasets: list[Dataset]) -> None:
+        if self._scan_thread is not None:
+            self._scan_thread.wait()
+            self._scan_thread = None
         self._datasets = datasets
         self._build_tree()
         self.status.showMessage(f"Found {len(datasets)} data file(s).")
@@ -372,7 +379,14 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "DataReporter", f"Generation failed:\n{msg}")
 
     def _finish_generation(self) -> None:
-        self._gen_thread = None
+        # Release the thread only after the OS thread has fully terminated.
+        # done/failed are emitted from the tail of run(), delivered here via a
+        # queued connection; without wait() the Python wrapper can be freed
+        # while QThread.isRunning() is still true, which calls qFatal() ->
+        # abort ("QThread: Destroyed while thread is still running").
+        thread, self._gen_thread = self._gen_thread, None
+        if thread is not None:
+            thread.wait()
         self.cancel_btn.setEnabled(False)
         self.progress_bar.setVisible(False)
         self._update_controls()
@@ -386,6 +400,8 @@ class MainWindow(QMainWindow):
         if self._gen_thread is not None:
             self._gen_thread.cancel()
             self._gen_thread.wait(5000)
+        if self._scan_thread is not None:
+            self._scan_thread.wait(5000)
         super().closeEvent(event)
 
 

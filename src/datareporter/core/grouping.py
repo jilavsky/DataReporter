@@ -35,6 +35,19 @@ OutputMode = Literal["source", "mirror", "flat"]
 #: Display/order priority of techniques inside multi-technique documents.
 _TECH_ORDER = {t: i for i, t in enumerate(("usaxs", "saxs", "waxs", "usaxs_merged"))}
 
+_COLLECTION_RE = re.compile(r"_(\d+)(?:_merged)?$", re.IGNORECASE)
+
+
+def _collection_num(name: str) -> int:
+    """Return the collection number embedded in a dataset stem, or 0 if absent.
+
+    Handles both plain files (``sample_0042``) and merged files
+    (``sample_0042_merged``) by matching the last ``_<digits>`` before an
+    optional ``_merged`` suffix.
+    """
+    m = _COLLECTION_RE.search(name)
+    return int(m.group(1)) if m else 0
+
 
 @dataclass
 class Group:
@@ -98,7 +111,7 @@ def group_datasets(datasets: Iterable[Dataset], scope: Scope) -> list[Group]:
         grp.datasets.append(d)
 
     for grp in groups.values():
-        grp.datasets.sort(key=lambda d: (_TECH_ORDER.get(d.technique, 99), d.name))
+        grp.datasets.sort(key=lambda d: (_TECH_ORDER.get(d.technique, 99), _collection_num(d.name), d.name))
     return sorted(groups.values(), key=lambda g: g.key)
 
 

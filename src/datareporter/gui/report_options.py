@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtWidgets import (
+from datareporter.config import ReportConfig
+from datareporter.gui._qt import (
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -16,8 +17,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from datareporter.config import ReportConfig
 
 #: (label shown in the GUI, scope value)
 _SCOPES = [

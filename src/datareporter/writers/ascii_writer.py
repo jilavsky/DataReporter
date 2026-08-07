@@ -11,9 +11,9 @@ files; the reads happen inside this module's own process pool.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Optional, Sequence
 
 __all__ = ["export_ascii"]
 
@@ -49,9 +49,9 @@ def _export_one(args: tuple[str, str, str, str, str]) -> tuple[str, str]:
 
 def export_ascii(
     items: Sequence[tuple],  # (Dataset, out_path)
-    workers: Optional[int] = None,
-    progress: Optional[Callable[[int, int], None]] = None,
-    cancel: Optional[Callable[[], bool]] = None,
+    workers: int | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> tuple[list[Path], list[str]]:
     """Export datasets to ``.dat`` files in parallel.
 

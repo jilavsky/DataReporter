@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from datareporter.core.grouping import OutputMode, Scope
 
@@ -24,13 +23,13 @@ class ReportConfig:
 
     scope: Scope = "sample"                  #: dataset | technique | sample | user
     mode: OutputMode = "source"              #: source | mirror | flat
-    output_dir: Optional[Path] = None        #: required for mirror/flat modes
+    output_dir: Path | None = None        #: required for mirror/flat modes
     formats: list[str] = field(default_factory=lambda: ["pdf"])
     per_graph: int = 1                       #: datasets overlaid per graph (1-10)
     pdf_grid: tuple[int, int] = (2, 3)       #: images per PDF page (rows, cols)
     pdf_summary: bool = True                 #: leading metadata/summary PDF page
     md_metadata: bool = True                 #: metadata bullets in Markdown
-    workers: Optional[int] = None            #: parallel processes (None = auto)
+    workers: int | None = None            #: parallel processes (None = auto)
 
     def validate(self) -> None:
         if self.scope not in ("dataset", "technique", "sample", "user"):

@@ -7,9 +7,10 @@ generated folder can be dropped straight into an Obsidian vault.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from datareporter.core.grouping import safe_name
 

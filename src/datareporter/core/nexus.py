@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import h5py
 import numpy as np
@@ -53,7 +53,7 @@ class Curve:
 
     q: np.ndarray
     i: np.ndarray
-    idev: Optional[np.ndarray] = None
+    idev: np.ndarray | None = None
     label: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -104,7 +104,7 @@ def read_metadata(path: str | Path) -> dict[str, Any]:
 
 # ── internals ─────────────────────────────────────────────────────────────
 
-def _pick_sasdata(h5: h5py.File) -> Optional[str]:
+def _pick_sasdata(h5: h5py.File) -> str | None:
     """Locate the preferred SASdata group.
 
     Finds all groups with attribute ``canSAS_class == "SASdata"`` and
@@ -133,7 +133,7 @@ def _attr(obj: Any, key: str) -> str:
     return str(val) if val is not None else ""
 
 
-def _read_array(grp: h5py.Group, key: str) -> Optional[np.ndarray]:
+def _read_array(grp: h5py.Group, key: str) -> np.ndarray | None:
     ds = grp.get(key)
     if ds is None:
         return None
@@ -144,7 +144,7 @@ def _read_array(grp: h5py.Group, key: str) -> Optional[np.ndarray]:
     return arr if arr.size > 1 else None
 
 
-def _read_metadata_from(h5: h5py.File, sasdata_path: Optional[str]) -> dict[str, Any]:
+def _read_metadata_from(h5: h5py.File, sasdata_path: str | None) -> dict[str, Any]:
     sasentry = sasdata_path.rsplit("/", 1)[0] if sasdata_path and "/" in sasdata_path else ""
     out: dict[str, Any] = {}
     for label, candidates in METADATA_KEYS.items():
@@ -164,7 +164,7 @@ def _read_metadata_from(h5: h5py.File, sasdata_path: Optional[str]) -> dict[str,
     return out
 
 
-def _read_scalar(h5: h5py.File, hpath: str) -> Optional[Any]:
+def _read_scalar(h5: h5py.File, hpath: str) -> Any | None:
     try:
         ds = h5.get(hpath)
         if ds is None or not isinstance(ds, h5py.Dataset):

@@ -15,10 +15,10 @@ import datetime as _dt
 import shutil
 import tempfile
 from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
-from typing import Callable, Optional, Sequence
 
 from datareporter.config import ReportConfig
 from datareporter.core.grouping import Group, group_datasets, resolve_output_dir
@@ -57,9 +57,9 @@ class RunReport:
 def generate(
     datasets: Sequence[Dataset],
     config: ReportConfig,
-    input_root: Optional[Path] = None,
-    progress: Optional[ProgressFn] = None,
-    cancel: Optional[CancelFn] = None,
+    input_root: Path | None = None,
+    progress: ProgressFn | None = None,
+    cancel: CancelFn | None = None,
 ) -> RunReport:
     """Run the full pipeline for *datasets* under *config*.
 
@@ -81,7 +81,7 @@ def generate(
     groups = group_datasets(datasets, config.scope)
     wants_images = any(f in config.formats for f in ("pdf", "md"))
 
-    image_dir: Optional[Path] = None
+    image_dir: Path | None = None
     try:
         results: dict[str, RenderResult] = {}
         group_tasks: dict[str, list[tuple[RenderTask, list[Dataset]]]] = {}

@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtWidgets import (
+from datareporter import api
+from datareporter.config import load_settings, save_settings
+from datareporter.core.model import Dataset
+from datareporter.core.pipeline import RunReport
+from datareporter.gui._qt import (
     QApplication,
     QFileDialog,
     QHBoxLayout,
@@ -25,16 +27,14 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStatusBar,
+    Qt,
+    QThread,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    Signal,
 )
-
-from datareporter import api
-from datareporter.config import load_settings, save_settings
-from datareporter.core.model import Dataset
-from datareporter.core.pipeline import RunReport
 from datareporter.gui.report_options import ReportOptions
 
 _DATASET_ROLE = Qt.ItemDataRole.UserRole
@@ -43,8 +43,8 @@ _DATASET_ROLE = Qt.ItemDataRole.UserRole
 class ScanThread(QThread):
     """Background fast scan (still sub-second for a month of data)."""
 
-    done = pyqtSignal(list)
-    failed = pyqtSignal(str)
+    done = Signal(list)
+    failed = Signal(str)
 
     def __init__(self, folder: str) -> None:
         super().__init__()
@@ -60,9 +60,9 @@ class ScanThread(QThread):
 class GenerateThread(QThread):
     """Runs the pipeline; reports progress and honors cancellation."""
 
-    progress = pyqtSignal(str, int, int)
-    done = pyqtSignal(object)   # RunReport
-    failed = pyqtSignal(str)
+    progress = Signal(str, int, int)
+    done = Signal(object)   # RunReport
+    failed = Signal(str)
 
     def __init__(self, datasets: list[Dataset], config, input_root: Path) -> None:
         super().__init__()
@@ -95,8 +95,8 @@ class MainWindow(QMainWindow):
         self.resize(1150, 720)
 
         self._datasets: list[Dataset] = []
-        self._scan_thread: Optional[ScanThread] = None
-        self._gen_thread: Optional[GenerateThread] = None
+        self._scan_thread: ScanThread | None = None
+        self._gen_thread: GenerateThread | None = None
 
         settings = load_settings()
 

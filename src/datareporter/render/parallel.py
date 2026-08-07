@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence
+from typing import Any
 
 __all__ = ["RenderTask", "RenderResult", "make_task", "render_all"]
 
@@ -90,9 +91,9 @@ def _render_one(task: RenderTask) -> RenderResult:
 
 def render_all(
     tasks: Sequence[RenderTask],
-    workers: Optional[int] = None,
-    progress: Optional[Callable[[int, int], None]] = None,
-    cancel: Optional[Callable[[], bool]] = None,
+    workers: int | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> dict[str, RenderResult]:
     """Render all tasks in parallel; returns ``{image_id: RenderResult}``.
 

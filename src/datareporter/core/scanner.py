@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Callable, Iterable, Optional
 
-from datareporter.core.model import Dataset, HDF_EXTENSIONS, technique_from_folder
+from datareporter.core.model import HDF_EXTENSIONS, Dataset, technique_from_folder
 
 __all__ = ["scan", "filter_datasets"]
 
@@ -88,9 +88,9 @@ def _classify(path: Path, root: Path) -> Dataset:
 
 def filter_datasets(
     datasets: Iterable[Dataset],
-    select: Optional[str] = None,
+    select: str | None = None,
     blanks: str = "include",
-    predicate: Optional[Callable[[Dataset], bool]] = None,
+    predicate: Callable[[Dataset], bool] | None = None,
 ) -> list[Dataset]:
     """Filter datasets by regex, blank handling, and/or custom predicate.
 

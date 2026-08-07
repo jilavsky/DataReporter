@@ -18,8 +18,8 @@ batch script::
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Optional, Sequence
 
 from datareporter.config import ReportConfig
 from datareporter.core.model import Dataset
@@ -33,7 +33,7 @@ __all__ = ["scan", "generate", "Dataset", "ReportConfig", "RunReport"]
 
 def scan(
     root: str | Path,
-    select: Optional[str] = None,
+    select: str | None = None,
     blanks: str = "include",
 ) -> list[Dataset]:
     """Index HDF5 files under *root* (fast — no files are opened).
@@ -55,14 +55,14 @@ def generate(
     scope: str = "sample",
     formats: Sequence[str] = ("pdf",),
     mode: str = "source",
-    output_dir: Optional[str | Path] = None,
+    output_dir: str | Path | None = None,
     per_graph: int = 1,
     pdf_grid: tuple[int, int] = (2, 3),
-    workers: Optional[int] = None,
-    input_root: Optional[str | Path] = None,
-    progress: Optional[Callable[[str, int, int], None]] = None,
-    cancel: Optional[Callable[[], bool]] = None,
-    config: Optional[ReportConfig] = None,
+    workers: int | None = None,
+    input_root: str | Path | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
+    config: ReportConfig | None = None,
 ) -> RunReport:
     """Generate reports for *datasets*.
 

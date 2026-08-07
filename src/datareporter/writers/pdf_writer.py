@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import matplotlib
 
@@ -55,7 +55,9 @@ def write_pdf(
             fig.suptitle(title, fontsize=12, weight="bold")
             for ax in axes_flat:
                 ax.axis("off")
-            for ax, (png, caption) in zip(axes_flat, page):
+            # strict=False is deliberate: the last page is normally shorter than
+            # the rows×cols grid, and the surplus axes stay blank (axis("off")).
+            for ax, (png, caption) in zip(axes_flat, page, strict=False):
                 try:
                     ax.imshow(plt.imread(str(png)))
                 except (OSError, ValueError):

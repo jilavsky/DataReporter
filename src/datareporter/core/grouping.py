@@ -21,11 +21,12 @@ An *output mode* decides where documents land (orthogonal to scope):
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
-from datareporter.core.model import Dataset, TECHNIQUES
+from datareporter.core.model import Dataset
 
 __all__ = ["Scope", "OutputMode", "Group", "group_datasets", "resolve_output_dir"]
 

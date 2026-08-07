@@ -7,7 +7,11 @@ dependencies:
   - numpy>=1.24
   - matplotlib>=3.7
   - h5py>=3.9
-  - pyqt>=6.5
   - pip
   - pip:
-    - -e .
+    # PySide6 comes from pip, not conda: the conda-forge "pyside6" package lags
+    # and mixing it with the pip wheels of the other packages in this ecosystem
+    # (pyirena, MailToVault) causes shiboken6 version skew.
+    # Never install the conda "pyqt" package here — PyQt6 and PySide6 in one
+    # environment break Qt platform-plugin resolution.
+    - -e .[gui]

@@ -7,8 +7,8 @@ imported inside worker processes — keep it free of GUI dependencies.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import matplotlib
 

@@ -9,9 +9,11 @@ version = "0.2.0"
 description = "PDF / Obsidian-Markdown / ASCII summaries of USAXS/SAXS/WAXS reduced-data trees"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+# 3.10 floor matches the rest of the ecosystem (pyirena, MailToVault) and
+# environment.yml, which already pins 3.11.
+requires-python = ">=3.10"
 authors = [
-    {name = "DataReporter Authors", email = "example@example.com"},
+    {name = "Jan Ilavsky", email = "ilavsky@anl.gov"},
 ]
 keywords = ["nexus", "hdf5", "scientific", "reporting"]
 classifiers = [
@@ -19,27 +21,45 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
+# Core dependencies are headless: the CLI and the writers must install and run
+# without a Qt binding. matplotlib is a core dep but is forced to the "Agg"
+# backend in render/plots.py, so it pulls in no GUI toolkit.
 dependencies = [
     "numpy>=1.24",
     "matplotlib>=3.7",
     "h5py>=3.9",
-    "PyQt6>=6.5",
 ]
 
 
 [project.optional-dependencies]
+# Install with: pip install "datareporter[gui]"
+#
+# PySide6, NOT PyQt6. Migrated 2026-08: PyQt6 used to be a core dependency,
+# which (a) forced Qt onto headless CLI installs and (b) collided with the
+# other packages in this ecosystem — pyirena, Matilda and MailToVault are all
+# PySide6, and having PySide6 and PyQt6 in one environment breaks Qt
+# platform-plugin resolution (on macOS: "could not load the Qt platform
+# plugin cocoa"). All Qt imports go through datareporter/gui/_qt.py, which
+# keeps PyQt6 working as a fallback for anyone who has only that.
+#
+# The exclusions match pyirena's pin so the two can share an environment.
+gui = [
+    "PySide6>=6.5,!=6.7.*,!=6.10.*",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "black>=23.0",
     "ruff>=0.1",
     "mypy>=1.0",
+]
+all = [
+    "datareporter[gui,dev]",
 ]
 
 
@@ -65,7 +85,19 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py310"
 
 
-[tool.black]
-line-length = 100
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # line length is the formatter's job, not a lint error
+    "E741",   # "ambiguous" names I (intensity), l, Q are physics notation here
+    "E701",   # compact one-line statements used in GUI code
+    "E702",
+    "E402",   # some modules configure paths/backends before imports
+]
+
+
+[tool.ruff.lint.per-file-ignores]
+"src/datareporter/gui/_qt.py" = ["F401", "E402"]  # the shim re-exports names on purpose

@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Buttons are drawn raised (gradient face, bevel, sunken when pressed) with
+  the same look and colour meaning as pyIrena, Matilda, Bernardyn and AIDA:
+  Generate is green (main action), Cancel is red (stop).
+  `gui/raised_buttons.py` is a vendored copy of `pyirena/gui/raised_buttons.py`.
+  Do not edit it here; refresh it with pyIrena's `scripts/sync_raised_buttons.py`.
+
 ## [0.2.0] - 2026-07-12
 
 Complete rebuild of the pipeline core.

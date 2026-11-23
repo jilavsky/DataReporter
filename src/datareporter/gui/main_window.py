@@ -15,6 +15,7 @@ from datareporter import api
 from datareporter.config import load_settings, save_settings
 from datareporter.core.model import Dataset
 from datareporter.core.pipeline import RunReport
+from datareporter.gui import raised_buttons
 from datareporter.gui._qt import (
     QApplication,
     QFileDialog,
@@ -116,9 +117,11 @@ class MainWindow(QMainWindow):
         self.pick_out_btn.clicked.connect(self._pick_output)
         self.generate_btn = QPushButton("Generate")
         self.generate_btn.setEnabled(False)
+        raised_buttons.set_role(self.generate_btn, "primary")
         self.generate_btn.clicked.connect(self._generate)
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setEnabled(False)
+        raised_buttons.set_role(self.cancel_btn, "stop")
         self.cancel_btn.clicked.connect(self._cancel)
         top.addWidget(QLabel("Input:"))
         top.addWidget(self.input_edit, stretch=2)
@@ -417,6 +420,7 @@ def launch() -> None:
     import sys
 
     app = QApplication(sys.argv)
+    raised_buttons.install(app)   # shared raised-button look (vendored from pyIrena)
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
